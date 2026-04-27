@@ -66,7 +66,7 @@ function detectPitch(buffer, sampleRate) {
   let energy = 0;
   for (let i = 0; i < SIZE; i++) energy += buffer[i] * buffer[i];
   const rms = Math.sqrt(energy / SIZE);
-  if (rms < 0.0015) return -1;
+  if (rms < 0.006) return -1;
 
   const minLag = Math.floor(sampleRate / 1400);
   const maxLag = Math.min(Math.floor(sampleRate / 60), SIZE - 1);
@@ -87,7 +87,7 @@ function detectPitch(buffer, sampleRate) {
     if (r[lag] > bestVal) { bestVal = r[lag]; bestLag = lag; }
   }
   const energyAvg = energy / SIZE;
-  if (bestLag < 0 || bestVal < energyAvg * 0.15) return -1;
+  if (bestLag < 0 || bestVal < energyAvg * 0.3) return -1;
 
   const x1 = r[bestLag - 1] || 0;
   const x2 = r[bestLag];
@@ -235,17 +235,29 @@ export default function GuitarTuner() {
     if (!active || !analyserRef.current) return;
     const analyser = analyserRef.current;
     const buffer = new Float32Array(analyser.fftSize);
+    let lastDetectMs = 0;
+    let lastUpdateMs = 0;
+    const HOLD_MS = 800;
+    const UPDATE_MS = 125;
+
     function tick() {
       analyser.getFloatTimeDomainData(buffer);
       const detectedFreq = detectPitch(buffer, audioCtxRef.current.sampleRate);
+      const now = performance.now();
+
       if (detectedFreq > 60 && detectedFreq < 1400) {
-        setFreq(Math.round(detectedFreq * 10) / 10);
+        lastDetectMs = now;
+        if (now - lastUpdateMs >= UPDATE_MS) {
+          lastUpdateMs = now;
+          setFreq(Math.round(detectedFreq * 10) / 10);
+          const nd = freqToNote(detectedFreq);
+          setNoteData(nd);
+          const closest = STANDARD_TUNING.reduce((prev, curr) =>
+            Math.abs(curr.freq - detectedFreq) < Math.abs(prev.freq - detectedFreq) ? curr : prev
+          );
+          setClosestString(closest);
+        }
         const nd = freqToNote(detectedFreq);
-        setNoteData(nd);
-        const closest = STANDARD_TUNING.reduce((prev, curr) =>
-          Math.abs(curr.freq - detectedFreq) < Math.abs(prev.freq - detectedFreq) ? curr : prev
-        );
-        setClosestString(closest);
         if (mode === "chord" && nd) {
           noteHistoryRef.current.push(nd.noteIndex);
           if (noteHistoryRef.current.length > 60) noteHistoryRef.current.shift();
@@ -260,7 +272,7 @@ export default function GuitarTuner() {
             setChord(matchChord(dominant));
           }
         }
-      } else {
+      } else if (now - lastDetectMs > HOLD_MS) {
         setFreq(null); setNoteData(null); setClosestString(null);
       }
       animRef.current = requestAnimationFrame(tick);
