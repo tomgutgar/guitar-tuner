@@ -1,2 +1,47 @@
-body { margin: 0; background: #080e0a; }
-#app { width: 100%; min-height: 100vh; }
+:root {
+  --bg: #1a1542;
+  --bg-deep: #100c30;
+  --panel: #2a2470;
+  --panel-2: #332a85;
+  --border: #5448c4;
+  --border-bright: #8c7eff;
+
+  --text: #ffffff;
+  --text-mid: #d6dcff;
+  --text-dim: #a9b1f0;
+
+  --cyan: #5cf5ff;
+  --magenta: #ff66c4;
+  --green: #5cffa6;
+  --yellow: #fff066;
+  --red: #ff7a93;
+  --violet: #c098ff;
+
+  --mono: 'JetBrains Mono', 'Geist Mono', 'SF Mono', 'Courier New', monospace;
+
+  color-scheme: dark;
+  font-family: var(--mono);
+  background: var(--bg);
+  color: var(--text);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(ellipse at 20% 0%, rgba(192, 152, 255, 0.18), transparent 60%),
+    radial-gradient(ellipse at 80% 100%, rgba(92, 245, 255, 0.12), transparent 60%),
+    var(--bg);
+  min-height: 100vh;
+}
+
+button {
+  font-family: var(--mono);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
