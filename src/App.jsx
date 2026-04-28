@@ -66,7 +66,7 @@ function detectPitch(buffer, sampleRate) {
   let energy = 0;
   for (let i = 0; i < SIZE; i++) energy += buffer[i] * buffer[i];
   const rms = Math.sqrt(energy / SIZE);
-  if (rms < 0.006) return -1;
+  if (rms < 0.002) return -1;  // ~-54 dB noise gate
 
   const minLag = Math.floor(sampleRate / 1400);
   const maxLag = Math.min(Math.floor(sampleRate / 60), SIZE - 1);
@@ -234,30 +234,59 @@ export default function GuitarTuner() {
   useEffect(() => {
     if (!active || !analyserRef.current) return;
     const analyser = analyserRef.current;
-    const buffer = new Float32Array(analyser.fftSize);
+    const buffer = new Float32Array(analyser.fftSize);  // 4096 always read
     let lastDetectMs = 0;
     let lastUpdateMs = 0;
     const HOLD_MS = 800;
-    const UPDATE_MS = 125;
+    const UPDATE_MS = 33;          // ~30 fps display
+    const EMA_ALPHA = 0.2;
+    const STABILITY_CENTS = 4;
+    const STABILITY_FRAMES = 3;
+
+    let smoothedFreq = null;
+    let stableCount = 0;
 
     function tick() {
       analyser.getFloatTimeDomainData(buffer);
-      const detectedFreq = detectPitch(buffer, audioCtxRef.current.sampleRate);
+      // Adaptive window: high strings (>180 Hz) need less data → faster, less latency
+      const analysisBuffer = smoothedFreq != null && smoothedFreq > 180
+        ? buffer.subarray(0, 2048)
+        : buffer;
+      const rawFreq = detectPitch(analysisBuffer, audioCtxRef.current.sampleRate);
       const now = performance.now();
 
-      if (detectedFreq > 60 && detectedFreq < 1400) {
+      if (rawFreq > 60 && rawFreq < 1400) {
         lastDetectMs = now;
-        if (now - lastUpdateMs >= UPDATE_MS) {
+
+        // EMA: snap fast on note jumps (>50 cents), glide smoothly on fine tuning
+        const centsDiff = smoothedFreq != null
+          ? Math.abs(1200 * Math.log2(rawFreq / smoothedFreq))
+          : Infinity;
+        const alpha = centsDiff > 50 ? 0.8 : EMA_ALPHA;
+        smoothedFreq = smoothedFreq == null
+          ? rawFreq
+          : smoothedFreq + alpha * (rawFreq - smoothedFreq);
+
+        // Hysteresis: only advance stable counter when raw is within threshold of smooth
+        const postDiff = Math.abs(1200 * Math.log2(rawFreq / smoothedFreq));
+        if (postDiff < STABILITY_CENTS) {
+          stableCount = Math.min(stableCount + 1, STABILITY_FRAMES + 1);
+        } else {
+          stableCount = 0;
+        }
+
+        if (stableCount >= STABILITY_FRAMES && now - lastUpdateMs >= UPDATE_MS) {
           lastUpdateMs = now;
-          setFreq(Math.round(detectedFreq * 10) / 10);
-          const nd = freqToNote(detectedFreq);
+          setFreq(Math.round(smoothedFreq * 10) / 10);
+          const nd = freqToNote(smoothedFreq);
           setNoteData(nd);
           const closest = STANDARD_TUNING.reduce((prev, curr) =>
-            Math.abs(curr.freq - detectedFreq) < Math.abs(prev.freq - detectedFreq) ? curr : prev
+            Math.abs(curr.freq - smoothedFreq) < Math.abs(prev.freq - smoothedFreq) ? curr : prev
           );
           setClosestString(closest);
         }
-        const nd = freqToNote(detectedFreq);
+
+        const nd = freqToNote(rawFreq);
         if (mode === "chord" && nd) {
           noteHistoryRef.current.push(nd.noteIndex);
           if (noteHistoryRef.current.length > 60) noteHistoryRef.current.shift();
@@ -273,6 +302,8 @@ export default function GuitarTuner() {
           }
         }
       } else if (now - lastDetectMs > HOLD_MS) {
+        smoothedFreq = null;
+        stableCount = 0;
         setFreq(null); setNoteData(null); setClosestString(null);
       }
       animRef.current = requestAnimationFrame(tick);
@@ -394,7 +425,7 @@ export default function GuitarTuner() {
         {error && (<div style={{ margin: "0 24px 20px", padding: "12px 16px", background: `${C.red}10`, border: `1px solid ${C.red}`, borderRadius: "3px", color: C.red, fontSize: "13px", letterSpacing: "1px", fontWeight: 600 }}>{error}</div>)}
         <div style={{ borderTop: `1px solid ${C.border}`, padding: "12px 24px", display: "flex", justifyContent: "space-between", fontSize: "11px", color: C.textDim, letterSpacing: "2px", fontWeight: 600 }}>
           <span>WEB AUDIO API</span>
-          <span style={{ color: C.violet }}>AUTOCORRELACION YIN</span>
+          <span style={{ color: C.violet }}>YIN + EMA SMOOTH</span>
           <span>12-TET</span>
         </div>
       </div>
