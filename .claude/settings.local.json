@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_vercel_vercel__deploy_to_vercel",
+      "mcp__plugin_vercel_vercel__list_deployments",
+      "mcp__obsidian-vault__create_directory",
+      "mcp__obsidian-vault__write_file",
+      "Bash(mkdir -p \"/e/ObsidianWorkspace/guitar-tuner\")",
+      "Bash(mv docs/vault/*.md \"/e/ObsidianWorkspace/guitar-tuner/\")",
+      "Bash(npm run *)"
+    ]
+  }
+}

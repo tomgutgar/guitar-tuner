@@ -33,6 +33,43 @@ const CHORD_TEMPLATES = {
   "D7": [2, 6, 9, 0],
 };
 
+const SCALES = {
+  "Mayor (jónico)": [0, 2, 4, 5, 7, 9, 11],
+  "Menor natural": [0, 2, 3, 5, 7, 8, 10],
+  "Menor armónica": [0, 2, 3, 5, 7, 8, 11],
+  "Menor melódica": [0, 2, 3, 5, 7, 9, 11],
+  "Pentatónica mayor": [0, 2, 4, 7, 9],
+  "Pentatónica menor": [0, 3, 5, 7, 10],
+  "Blues": [0, 3, 5, 6, 7, 10],
+  "Dórico": [0, 2, 3, 5, 7, 9, 10],
+  "Frigio": [0, 1, 3, 5, 7, 8, 10],
+  "Lidio": [0, 2, 4, 6, 7, 9, 11],
+  "Mixolidio": [0, 2, 4, 5, 7, 9, 10],
+  "Locrio": [0, 1, 3, 5, 6, 8, 10],
+};
+
+// Cuerdas de arriba (1ª, aguda) a abajo (6ª, grave) — orden visual estándar de tab
+const FRETBOARD_STRINGS = [
+  { label: "E4", noteIndex: 4 },
+  { label: "B3", noteIndex: 11 },
+  { label: "G3", noteIndex: 7 },
+  { label: "D3", noteIndex: 2 },
+  { label: "A2", noteIndex: 9 },
+  { label: "E2", noteIndex: 4 },
+];
+
+const FRET_MARKERS = [3, 5, 7, 9, 12];
+const FRET_COUNT = 12;
+
+const INTERVAL_NAMES = [
+  "Unísono", "2ª menor", "2ª mayor", "3ª menor", "3ª mayor", "4ª justa",
+  "Tritono", "5ª justa", "6ª menor", "6ª mayor", "7ª menor", "7ª mayor", "Octava",
+];
+const INTERVAL_QUALITY = [
+  "Perfecto", "Disonante", "Suave", "Sombrío", "Brillante", "Estable",
+  "Tenso", "Estable", "Sombrío", "Brillante", "Suave", "Tenso", "Perfecto",
+];
+
 const C = {
   bg: "#1a1542",
   bgDeep: "#100c30",
@@ -119,6 +156,87 @@ function matchChord(noteIndices) {
   return best;
 }
 
+function Fretboard({ rootIndex, scaleIntervals }) {
+  const scaleSet = new Set(scaleIntervals.map((i) => (i + rootIndex) % 12));
+  return (
+    <div style={{ overflowX: "auto", padding: "4px 0 8px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: `40px repeat(${FRET_COUNT}, minmax(34px, 1fr))`, gap: "2px", minWidth: "480px" }}>
+        <div />
+        {Array.from({ length: FRET_COUNT }, (_, i) => i + 1).map((f) => (
+          <div key={`h${f}`} style={{ textAlign: "center", color: FRET_MARKERS.includes(f) ? C.violet : C.textDim, fontSize: "11px", letterSpacing: "1px", fontWeight: 600, paddingBottom: "2px" }}>{f}</div>
+        ))}
+        {FRETBOARD_STRINGS.map((s, si) => (
+          <div key={`row${si}`} style={{ display: "contents" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", color: C.textMid, fontSize: "12px", fontWeight: 700, letterSpacing: "1px", borderRight: `2px solid ${C.borderBright}`, paddingRight: "6px" }}>{s.label}</div>
+            {Array.from({ length: FRET_COUNT }, (_, fi) => {
+              const fret = fi + 1;
+              const noteIdx = (s.noteIndex + fret) % 12;
+              const inScale = scaleSet.has(noteIdx);
+              const isRoot = inScale && noteIdx === rootIndex;
+              const bg = isRoot ? C.magenta : inScale ? `${C.cyan}26` : C.bgDeep;
+              const color = isRoot ? C.bg : inScale ? C.cyan : C.textDim;
+              const border = isRoot ? C.magenta : inScale ? C.cyan : C.border;
+              return (
+                <div key={`c${si}-${fret}`} style={{ position: "relative", textAlign: "center", padding: "8px 2px", background: bg, border: `1px solid ${border}`, borderRadius: "3px", color, fontSize: "12px", fontWeight: 700, boxShadow: isRoot ? `0 0 10px ${C.magenta}88` : inScale ? `0 0 6px ${C.cyan}44` : "none" }}>
+                  {inScale ? NOTES[noteIdx] : (FRET_MARKERS.includes(fret) && si === 2 ? <span style={{ color: C.violet, opacity: 0.5 }}>•</span> : "")}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function IntervalView({ noteA, noteB, setNoteA, setNoteB }) {
+  const semis = ((noteB - noteA) % 12 + 12) % 12;
+  const name = INTERVAL_NAMES[semis === 0 ? 0 : semis];
+  const quality = INTERVAL_QUALITY[semis];
+  const ratio = Math.pow(2, semis / 12);
+  const cents = semis * 100;
+
+  const renderRow = (selected, onPick, label) => (
+    <div style={{ marginBottom: "12px" }}>
+      <div style={{ color: C.textDim, fontSize: "11px", letterSpacing: "2px", textTransform: "uppercase", fontWeight: 600, marginBottom: "6px" }}>{label}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(12, 1fr)", gap: "3px" }}>
+        {NOTES.map((n, i) => {
+          const sel = i === selected;
+          return (
+            <button key={n} onClick={() => onPick(i)} style={{ padding: "8px 2px", background: sel ? `${C.cyan}26` : C.bgDeep, border: `1px solid ${sel ? C.cyan : C.border}`, borderRadius: "3px", color: sel ? C.cyan : C.textMid, fontSize: n.includes("#") ? "11px" : "12px", fontWeight: sel ? 800 : 600, cursor: "pointer", fontFamily: "inherit", boxShadow: sel ? `0 0 10px ${C.cyan}55` : "none", transition: "all 0.15s" }}>{n}</button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      {renderRow(noteA, setNoteA, "Nota A")}
+      {renderRow(noteB, setNoteB, "Nota B")}
+      <div style={{ textAlign: "center", padding: "20px 0 12px" }}>
+        <div style={{ color: C.textDim, fontSize: "11px", letterSpacing: "2px", textTransform: "uppercase", fontWeight: 600, marginBottom: "8px" }}>Intervalo</div>
+        <div style={{ fontSize: "44px", fontWeight: 800, color: C.cyan, lineHeight: 1.1, letterSpacing: "-1px", textShadow: `0 0 30px ${C.cyan}77` }}>{name}</div>
+        <div style={{ color: C.violet, fontSize: "14px", letterSpacing: "2px", marginTop: "8px", fontWeight: 700, textTransform: "uppercase" }}>{quality}</div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", marginTop: "12px" }}>
+        <div style={{ padding: "10px", background: C.bgDeep, border: `1px solid ${C.border}`, borderRadius: "3px", textAlign: "center" }}>
+          <div style={{ color: C.textDim, fontSize: "10px", letterSpacing: "2px", fontWeight: 600 }}>SEMITONOS</div>
+          <div style={{ color: C.text, fontSize: "20px", fontWeight: 700, marginTop: "4px" }}>{semis}</div>
+        </div>
+        <div style={{ padding: "10px", background: C.bgDeep, border: `1px solid ${C.border}`, borderRadius: "3px", textAlign: "center" }}>
+          <div style={{ color: C.textDim, fontSize: "10px", letterSpacing: "2px", fontWeight: 600 }}>CENTS</div>
+          <div style={{ color: C.text, fontSize: "20px", fontWeight: 700, marginTop: "4px" }}>{cents}</div>
+        </div>
+        <div style={{ padding: "10px", background: C.bgDeep, border: `1px solid ${C.border}`, borderRadius: "3px", textAlign: "center" }}>
+          <div style={{ color: C.textDim, fontSize: "10px", letterSpacing: "2px", fontWeight: 600 }}>RATIO</div>
+          <div style={{ color: C.text, fontSize: "20px", fontWeight: 700, marginTop: "4px" }}>{ratio.toFixed(3)}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Waveform({ analyser, active }) {
   const canvasRef = useRef(null);
   const animRef = useRef(null);
@@ -175,6 +293,10 @@ export default function GuitarTuner() {
   const [mode, setMode] = useState("tuner");
   const [closestString, setClosestString] = useState(null);
   const [error, setError] = useState(null);
+  const [scaleRoot, setScaleRoot] = useState(0);
+  const [scaleName, setScaleName] = useState("Mayor (jónico)");
+  const [intervalA, setIntervalA] = useState(0);
+  const [intervalB, setIntervalB] = useState(7);
 
   const audioCtxRef = useRef(null);
   const analyserRef = useRef(null);
@@ -335,21 +457,28 @@ export default function GuitarTuner() {
             <span style={{ color: active ? C.green : C.textDim, fontSize: "13px", letterSpacing: "2px", fontWeight: 700 }}>{active ? "LIVE" : "STANDBY"}</span>
           </div>
         </div>
-        <div style={{ padding: "14px 24px 0", display: "flex", gap: "8px" }}>
-          {["tuner", "chord"].map((m) => {
+        <div style={{ padding: "14px 24px 0", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "6px" }}>
+          {[
+            ["tuner", "AFINADOR"],
+            ["chord", "ACORDES"],
+            ["scales", "ESCALAS"],
+            ["intervals", "INTERV."],
+          ].map(([m, label]) => {
             const sel = mode === m;
             return (
-              <button key={m} onClick={() => setMode(m)} style={{ padding: "9px 22px", background: sel ? C.cyan : "transparent", color: sel ? C.bg : C.textMid, border: `1px solid ${sel ? C.cyan : C.border}`, borderRadius: "3px", fontSize: "13px", letterSpacing: "2px", cursor: "pointer", fontFamily: "inherit", textTransform: "uppercase", fontWeight: 700, transition: "all 0.2s", boxShadow: sel ? `0 0 12px ${C.cyan}66` : "none" }}>{m === "tuner" ? "AFINADOR" : "ACORDES"}</button>
+              <button key={m} onClick={() => setMode(m)} style={{ padding: "9px 6px", background: sel ? C.cyan : "transparent", color: sel ? C.bg : C.textMid, border: `1px solid ${sel ? C.cyan : C.border}`, borderRadius: "3px", fontSize: "12px", letterSpacing: "1px", cursor: "pointer", fontFamily: "inherit", textTransform: "uppercase", fontWeight: 700, transition: "all 0.2s", boxShadow: sel ? `0 0 12px ${C.cyan}66` : "none" }}>{label}</button>
             );
           })}
         </div>
-        <div style={{ padding: "16px 24px 8px" }}>
-          <div style={{ background: C.bgDeep, border: `1px solid ${C.border}`, borderRadius: "3px", padding: "8px", position: "relative", overflow: "hidden" }}>
-            <Waveform analyser={analyserRef.current} active={active} />
-            <div style={{ position: "absolute", top: "6px", left: "12px", ...microLabelStyle, color: C.violet }}>SIGNAL</div>
+        {(mode === "tuner" || mode === "chord") && (
+          <div style={{ padding: "16px 24px 8px" }}>
+            <div style={{ background: C.bgDeep, border: `1px solid ${C.border}`, borderRadius: "3px", padding: "8px", position: "relative", overflow: "hidden" }}>
+              <Waveform analyser={analyserRef.current} active={active} />
+              <div style={{ position: "absolute", top: "6px", left: "12px", ...microLabelStyle, color: C.violet }}>SIGNAL</div>
+            </div>
           </div>
-        </div>
-        {mode === "tuner" ? (
+        )}
+        {mode === "tuner" && (
           <div style={{ padding: "16px 24px" }}>
             <div style={{ textAlign: "center", padding: "24px 0 16px", position: "relative" }}>
               <div style={{ fontSize: "128px", fontWeight: 800, color: noteData ? centsColor : C.textDim, lineHeight: 1, letterSpacing: "-5px", transition: "color 0.15s", fontFamily: "inherit", textShadow: noteData ? `0 0 50px ${centsColor}88, 0 0 20px ${centsColor}55` : "none" }}>{noteData ? noteData.note : "--"}</div>
@@ -386,7 +515,8 @@ export default function GuitarTuner() {
               </div>
             </div>
           </div>
-        ) : (
+        )}
+        {mode === "chord" && (
           <div style={{ padding: "16px 24px" }}>
             <div style={{ textAlign: "center", padding: "20px 0 12px" }}>
               <div style={{ ...labelStyle, marginBottom: "14px" }}>ACORDE DETECTADO</div>
@@ -416,12 +546,53 @@ export default function GuitarTuner() {
             <div style={{ marginTop: "16px", padding: "10px 14px", background: C.bgDeep, border: `1px solid ${C.border}`, borderRadius: "3px", fontSize: "13px", color: C.textMid, letterSpacing: "1px", lineHeight: "1.6" }}>Toca las cuerdas individualmente o el acorde completo. El detector analiza las notas dominantes en tiempo real.</div>
           </div>
         )}
-        <div style={{ padding: "0 24px 20px", display: "flex", gap: "10px" }}>
-          <button onClick={active ? stopAudio : startAudio} style={{ flex: 1, padding: "16px", background: active ? "transparent" : C.cyan, color: active ? C.red : C.bg, border: `1px solid ${active ? C.red : C.cyan}`, borderRadius: "3px", fontSize: "14px", letterSpacing: "3px", cursor: "pointer", fontFamily: "inherit", fontWeight: 800, transition: "all 0.2s", textTransform: "uppercase", boxShadow: active ? `0 0 14px ${C.red}55` : `0 0 14px ${C.cyan}77` }}>{active ? "DETENER" : "ACTIVAR MICROFONO"}</button>
-          {active && mode === "chord" && (
-            <button onClick={() => { chordNotesRef.current = []; noteHistoryRef.current = []; setDetectedNotes([]); setChord(null); }} style={{ padding: "16px 22px", background: "transparent", color: C.violet, border: `1px solid ${C.violet}`, borderRadius: "3px", fontSize: "13px", letterSpacing: "2px", cursor: "pointer", fontFamily: "inherit", fontWeight: 700, transition: "all 0.2s" }}>RESET</button>
-          )}
-        </div>
+        {mode === "scales" && (
+          <div style={{ padding: "16px 24px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: "10px", marginBottom: "14px" }}>
+              <div>
+                <div style={{ ...microLabelStyle, marginBottom: "6px", color: C.magenta }}>TÓNICA</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: "3px" }}>
+                  {NOTES.map((n, i) => {
+                    const sel = i === scaleRoot;
+                    return (
+                      <button key={n} onClick={() => setScaleRoot(i)} style={{ padding: "8px 2px", background: sel ? C.magenta : C.bgDeep, border: `1px solid ${sel ? C.magenta : C.border}`, borderRadius: "3px", color: sel ? C.bg : C.textMid, fontSize: n.includes("#") ? "11px" : "12px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: sel ? `0 0 10px ${C.magenta}88` : "none" }}>{n}</button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <div style={{ ...microLabelStyle, marginBottom: "6px", color: C.magenta }}>ESCALA</div>
+                <select value={scaleName} onChange={(e) => setScaleName(e.target.value)} style={{ width: "100%", padding: "10px 8px", background: C.bgDeep, border: `1px solid ${C.border}`, borderRadius: "3px", color: C.cyan, fontSize: "14px", fontWeight: 700, fontFamily: "inherit", letterSpacing: "1px", cursor: "pointer" }}>
+                  {Object.keys(SCALES).map((s) => (<option key={s} value={s} style={{ background: C.bgDeep }}>{s}</option>))}
+                </select>
+                <div style={{ marginTop: "8px", display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                  {SCALES[scaleName].map((iv) => (
+                    <span key={iv} style={{ padding: "4px 8px", background: `${C.cyan}1a`, border: `1px solid ${C.cyan}`, borderRadius: "3px", color: C.cyan, fontSize: "12px", fontWeight: 700 }}>{NOTES[(iv + scaleRoot) % 12]}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div style={{ ...labelStyle, marginBottom: "8px" }}>MÁSTIL</div>
+            <Fretboard rootIndex={scaleRoot} scaleIntervals={SCALES[scaleName]} />
+            <div style={{ marginTop: "12px", padding: "10px 14px", background: C.bgDeep, border: `1px solid ${C.border}`, borderRadius: "3px", fontSize: "12px", color: C.textMid, letterSpacing: "1px", lineHeight: "1.6" }}>
+              <span style={{ color: C.magenta, fontWeight: 700 }}>●</span> tónica · <span style={{ color: C.cyan, fontWeight: 700 }}>●</span> nota de la escala · 12 trastes en orden estándar (1ª cuerda arriba).
+            </div>
+          </div>
+        )}
+        {mode === "intervals" && (
+          <div style={{ padding: "16px 24px" }}>
+            <IntervalView noteA={intervalA} noteB={intervalB} setNoteA={setIntervalA} setNoteB={setIntervalB} />
+          </div>
+        )}
+        {(mode === "tuner" || mode === "chord") && (
+          <div style={{ padding: "0 24px 20px", display: "flex", gap: "10px" }}>
+            <button onClick={active ? stopAudio : startAudio} style={{ flex: 1, padding: "16px", background: active ? "transparent" : C.cyan, color: active ? C.red : C.bg, border: `1px solid ${active ? C.red : C.cyan}`, borderRadius: "3px", fontSize: "14px", letterSpacing: "3px", cursor: "pointer", fontFamily: "inherit", fontWeight: 800, transition: "all 0.2s", textTransform: "uppercase", boxShadow: active ? `0 0 14px ${C.red}55` : `0 0 14px ${C.cyan}77` }}>{active ? "DETENER" : "ACTIVAR MICROFONO"}</button>
+            {active && mode === "chord" && (
+              <button onClick={() => { chordNotesRef.current = []; noteHistoryRef.current = []; setDetectedNotes([]); setChord(null); }} style={{ padding: "16px 22px", background: "transparent", color: C.violet, border: `1px solid ${C.violet}`, borderRadius: "3px", fontSize: "13px", letterSpacing: "2px", cursor: "pointer", fontFamily: "inherit", fontWeight: 700, transition: "all 0.2s" }}>RESET</button>
+            )}
+          </div>
+        )}
+        {(mode === "scales" || mode === "intervals") && <div style={{ padding: "0 0 12px" }} />}
         {error && (<div style={{ margin: "0 24px 20px", padding: "12px 16px", background: `${C.red}10`, border: `1px solid ${C.red}`, borderRadius: "3px", color: C.red, fontSize: "13px", letterSpacing: "1px", fontWeight: 600 }}>{error}</div>)}
         <div style={{ borderTop: `1px solid ${C.border}`, padding: "12px 24px", display: "flex", justifyContent: "space-between", fontSize: "11px", color: C.textDim, letterSpacing: "2px", fontWeight: 600 }}>
           <span>WEB AUDIO API</span>
