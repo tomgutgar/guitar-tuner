@@ -10,27 +10,24 @@ const STANDARD_TUNING = [
   { string: 1, note: "E", freq: 329.63, label: "E4" },
 ];
 
-const CHORD_TEMPLATES = {
-  "E maj": [0, 4, 7],
-  "E min": [0, 3, 7],
-  "A maj": [9, 0, 4],
-  "A min": [9, 0, 3],
-  "D maj": [2, 6, 9],
-  "D min": [2, 5, 9],
-  "G maj": [7, 11, 2],
-  "G min": [7, 10, 2],
-  "C maj": [0, 4, 7],
-  "C min": [0, 3, 7],
-  "F maj": [5, 9, 0],
-  "F min": [5, 8, 0],
-  "B maj": [11, 3, 6],
-  "B min": [11, 2, 6],
-  "Em7": [0, 3, 7, 10],
-  "Am7": [9, 0, 3, 7],
-  "Dm7": [2, 5, 9, 0],
-  "G7": [7, 11, 2, 5],
-  "C maj7": [0, 4, 7, 11],
-  "D7": [2, 6, 9, 0],
+const CHORD_TYPES = {
+  "Mayor": [0, 4, 7],
+  "Menor": [0, 3, 7],
+  "7ª dom.": [0, 4, 7, 10],
+  "Mayor 7ª": [0, 4, 7, 11],
+  "Menor 7ª": [0, 3, 7, 10],
+  "Menor maj.7": [0, 3, 7, 11],
+  "Sus2": [0, 2, 7],
+  "Sus4": [0, 5, 7],
+  "6ª mayor": [0, 4, 7, 9],
+  "6ª menor": [0, 3, 7, 9],
+  "9ª dom.": [0, 2, 4, 7, 10],
+  "Add9": [0, 2, 4, 7],
+  "Disminuido": [0, 3, 6],
+  "Disminuido 7": [0, 3, 6, 9],
+  "Semidisminuido": [0, 3, 6, 10],
+  "Aumentado": [0, 4, 8],
+  "Quinta (power)": [0, 7],
 };
 
 const SCALES = {
@@ -126,6 +123,16 @@ function detectPitch(buffer, sampleRate) {
   const energyAvg = energy / SIZE;
   if (bestLag < 0 || bestVal < energyAvg * 0.3) return -1;
 
+  // Corrección de octava: si el lag mitad (o tercio) es casi igual de fuerte, es la frecuencia real
+  for (const div of [2, 3]) {
+    const candidate = Math.round(bestLag / div);
+    if (candidate >= minLag && r[candidate] > bestVal * 0.9) {
+      bestLag = candidate;
+      bestVal = r[candidate];
+      break;
+    }
+  }
+
   const x1 = r[bestLag - 1] || 0;
   const x2 = r[bestLag];
   const x3 = r[bestLag + 1] || 0;
@@ -136,25 +143,6 @@ function detectPitch(buffer, sampleRate) {
   return sampleRate / refinedLag;
 }
 
-function matchChord(noteIndices) {
-  if (noteIndices.length < 2) return null;
-  const unique = [...new Set(noteIndices)].sort((a, b) => a - b);
-  let best = null;
-  let bestScore = 0;
-  for (const [name, intervals] of Object.entries(CHORD_TEMPLATES)) {
-    for (let root = 0; root < 12; root++) {
-      const chordNotes = intervals.map((i) => (i + root) % 12).sort((a, b) => a - b);
-      const matches = unique.filter((n) => chordNotes.includes(n)).length;
-      const score = matches / Math.max(unique.length, chordNotes.length);
-      if (score > bestScore && score > 0.6) {
-        bestScore = score;
-        const rootNote = NOTES[root];
-        best = name.replace(/^[A-G]#?/, rootNote);
-      }
-    }
-  }
-  return best;
-}
 
 function Fretboard({ rootIndex, scaleIntervals }) {
   const scaleSet = new Set(scaleIntervals.map((i) => (i + rootIndex) % 12));
@@ -288,13 +276,13 @@ export default function GuitarTuner() {
   const [active, setActive] = useState(false);
   const [freq, setFreq] = useState(null);
   const [noteData, setNoteData] = useState(null);
-  const [detectedNotes, setDetectedNotes] = useState([]);
-  const [chord, setChord] = useState(null);
   const [mode, setMode] = useState("tuner");
   const [closestString, setClosestString] = useState(null);
   const [error, setError] = useState(null);
   const [scaleRoot, setScaleRoot] = useState(0);
   const [scaleName, setScaleName] = useState("Mayor (jónico)");
+  const [chordRoot, setChordRoot] = useState(0);
+  const [chordType, setChordType] = useState("Mayor");
   const [intervalA, setIntervalA] = useState(0);
   const [intervalB, setIntervalB] = useState(7);
 
@@ -303,8 +291,6 @@ export default function GuitarTuner() {
   const sourceRef = useRef(null);
   const streamRef = useRef(null);
   const animRef = useRef(null);
-  const noteHistoryRef = useRef([]);
-  const chordNotesRef = useRef([]);
 
   const stopAudio = useCallback(() => {
     cancelAnimationFrame(animRef.current);
@@ -314,8 +300,6 @@ export default function GuitarTuner() {
     audioCtxRef.current = null; analyserRef.current = null;
     sourceRef.current = null; streamRef.current = null;
     setActive(false); setFreq(null); setNoteData(null);
-    setDetectedNotes([]); setChord(null);
-    chordNotesRef.current = [];
   }, []);
 
   const startAudio = useCallback(async () => {
@@ -408,21 +392,6 @@ export default function GuitarTuner() {
           setClosestString(closest);
         }
 
-        const nd = freqToNote(rawFreq);
-        if (mode === "chord" && nd) {
-          noteHistoryRef.current.push(nd.noteIndex);
-          if (noteHistoryRef.current.length > 60) noteHistoryRef.current.shift();
-          const recent = noteHistoryRef.current.slice(-30);
-          const fmap = {};
-          recent.forEach((n) => (fmap[n] = (fmap[n] || 0) + 1));
-          const dominant = Object.entries(fmap).filter(([, v]) => v > 3).map(([k]) => parseInt(k));
-          if (dominant.length !== chordNotesRef.current.length ||
-            dominant.some((n, i) => n !== chordNotesRef.current[i])) {
-            chordNotesRef.current = dominant;
-            setDetectedNotes(dominant.map((i) => NOTES[i]));
-            setChord(matchChord(dominant));
-          }
-        }
       } else if (now - lastDetectMs > HOLD_MS) {
         smoothedFreq = null;
         stableCount = 0;
@@ -432,7 +401,7 @@ export default function GuitarTuner() {
     }
     animRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animRef.current);
-  }, [active, mode]);
+  }, [active]);
 
   const centsColor = noteData
     ? Math.abs(noteData.cents) < 5 ? C.green
@@ -470,7 +439,7 @@ export default function GuitarTuner() {
             );
           })}
         </div>
-        {(mode === "tuner" || mode === "chord") && (
+        {mode === "tuner" && (
           <div style={{ padding: "16px 24px 8px" }}>
             <div style={{ background: C.bgDeep, border: `1px solid ${C.border}`, borderRadius: "3px", padding: "8px", position: "relative", overflow: "hidden" }}>
               <Waveform analyser={analyserRef.current} active={active} />
@@ -518,32 +487,35 @@ export default function GuitarTuner() {
         )}
         {mode === "chord" && (
           <div style={{ padding: "16px 24px" }}>
-            <div style={{ textAlign: "center", padding: "20px 0 12px" }}>
-              <div style={{ ...labelStyle, marginBottom: "14px" }}>ACORDE DETECTADO</div>
-              <div style={{ fontSize: "84px", fontWeight: 800, color: chord ? C.cyan : C.textDim, lineHeight: 1, letterSpacing: "-1px", textShadow: chord ? `0 0 50px ${C.cyan}88, 0 0 20px ${C.cyan}55` : "none", transition: "all 0.2s", minHeight: "96px" }}>{chord || "---"}</div>
-            </div>
-            <div style={{ padding: "14px 16px", background: C.bgDeep, border: `1px solid ${C.border}`, borderRadius: "3px", marginBottom: "16px" }}>
-              <div style={{ ...microLabelStyle, color: C.magenta, marginBottom: "10px" }}>NOTAS DETECTADAS</div>
-              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", minHeight: "32px" }}>
-                {detectedNotes.length > 0 ? detectedNotes.map((n, i) => (
-                  <span key={i} style={{ padding: "7px 14px", background: `${C.magenta}18`, border: `1px solid ${C.magenta}`, borderRadius: "3px", color: C.magenta, fontSize: "16px", letterSpacing: "1px", fontWeight: 700, boxShadow: `0 0 10px ${C.magenta}33` }}>{n}</span>
-                )) : (<span style={{ color: C.textDim, fontSize: "14px", letterSpacing: "1px" }}>Toca la guitarra...</span>)}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: "10px", marginBottom: "14px" }}>
+              <div>
+                <div style={{ ...microLabelStyle, marginBottom: "6px", color: C.magenta }}>TÓNICA</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: "3px" }}>
+                  {NOTES.map((n, i) => {
+                    const sel = i === chordRoot;
+                    return (
+                      <button key={n} onClick={() => setChordRoot(i)} style={{ padding: "8px 2px", background: sel ? C.magenta : C.bgDeep, border: `1px solid ${sel ? C.magenta : C.border}`, borderRadius: "3px", color: sel ? C.bg : C.textMid, fontSize: n.includes("#") ? "11px" : "12px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: sel ? `0 0 10px ${C.magenta}88` : "none" }}>{n}</button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <div style={{ ...microLabelStyle, marginBottom: "6px", color: C.magenta }}>TIPO DE ACORDE</div>
+                <select value={chordType} onChange={(e) => setChordType(e.target.value)} style={{ width: "100%", padding: "10px 8px", background: C.bgDeep, border: `1px solid ${C.border}`, borderRadius: "3px", color: C.cyan, fontSize: "14px", fontWeight: 700, fontFamily: "inherit", letterSpacing: "1px", cursor: "pointer" }}>
+                  {Object.keys(CHORD_TYPES).map((t) => (<option key={t} value={t} style={{ background: C.bgDeep }}>{t}</option>))}
+                </select>
+                <div style={{ marginTop: "8px", display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                  {CHORD_TYPES[chordType].map((iv) => (
+                    <span key={iv} style={{ padding: "4px 8px", background: `${C.cyan}1a`, border: `1px solid ${C.cyan}`, borderRadius: "3px", color: C.cyan, fontSize: "12px", fontWeight: 700 }}>{NOTES[(iv + chordRoot) % 12]}</span>
+                  ))}
+                </div>
               </div>
             </div>
-            <div style={{ marginBottom: "8px" }}>
-              <div style={{ ...labelStyle, marginBottom: "10px" }}>ESCALA CROMATICA</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(12, 1fr)", gap: "3px" }}>
-                {NOTES.map((n) => {
-                  const isActive = detectedNotes.includes(n);
-                  return (
-                    <div key={n} style={{ textAlign: "center", padding: "8px 2px", background: isActive ? `${C.cyan}1a` : C.bgDeep, border: `1px solid ${isActive ? C.cyan : C.border}`, borderRadius: "3px", transition: "all 0.15s", boxShadow: isActive ? `0 0 10px ${C.cyan}55` : "none" }}>
-                      <div style={{ color: isActive ? C.cyan : C.textMid, fontSize: n.includes("#") ? "12px" : "13px", fontWeight: isActive ? 800 : 600 }}>{n}</div>
-                    </div>
-                  );
-                })}
-              </div>
+            <div style={{ ...labelStyle, marginBottom: "8px" }}>MÁSTIL</div>
+            <Fretboard rootIndex={chordRoot} scaleIntervals={CHORD_TYPES[chordType]} />
+            <div style={{ marginTop: "12px", padding: "10px 14px", background: C.bgDeep, border: `1px solid ${C.border}`, borderRadius: "3px", fontSize: "12px", color: C.textMid, letterSpacing: "1px", lineHeight: "1.6" }}>
+              <span style={{ color: C.magenta, fontWeight: 700 }}>●</span> fundamental · <span style={{ color: C.cyan, fontWeight: 700 }}>●</span> nota del acorde · Las formas de barre se trasladan subiendo el traste.
             </div>
-            <div style={{ marginTop: "16px", padding: "10px 14px", background: C.bgDeep, border: `1px solid ${C.border}`, borderRadius: "3px", fontSize: "13px", color: C.textMid, letterSpacing: "1px", lineHeight: "1.6" }}>Toca las cuerdas individualmente o el acorde completo. El detector analiza las notas dominantes en tiempo real.</div>
           </div>
         )}
         {mode === "scales" && (
@@ -584,12 +556,9 @@ export default function GuitarTuner() {
             <IntervalView noteA={intervalA} noteB={intervalB} setNoteA={setIntervalA} setNoteB={setIntervalB} />
           </div>
         )}
-        {(mode === "tuner" || mode === "chord") && (
-          <div style={{ padding: "0 24px 20px", display: "flex", gap: "10px" }}>
-            <button onClick={active ? stopAudio : startAudio} style={{ flex: 1, padding: "16px", background: active ? "transparent" : C.cyan, color: active ? C.red : C.bg, border: `1px solid ${active ? C.red : C.cyan}`, borderRadius: "3px", fontSize: "14px", letterSpacing: "3px", cursor: "pointer", fontFamily: "inherit", fontWeight: 800, transition: "all 0.2s", textTransform: "uppercase", boxShadow: active ? `0 0 14px ${C.red}55` : `0 0 14px ${C.cyan}77` }}>{active ? "DETENER" : "ACTIVAR MICROFONO"}</button>
-            {active && mode === "chord" && (
-              <button onClick={() => { chordNotesRef.current = []; noteHistoryRef.current = []; setDetectedNotes([]); setChord(null); }} style={{ padding: "16px 22px", background: "transparent", color: C.violet, border: `1px solid ${C.violet}`, borderRadius: "3px", fontSize: "13px", letterSpacing: "2px", cursor: "pointer", fontFamily: "inherit", fontWeight: 700, transition: "all 0.2s" }}>RESET</button>
-            )}
+        {mode === "tuner" && (
+          <div style={{ padding: "0 24px 20px" }}>
+            <button onClick={active ? stopAudio : startAudio} style={{ width: "100%", padding: "16px", background: active ? "transparent" : C.cyan, color: active ? C.red : C.bg, border: `1px solid ${active ? C.red : C.cyan}`, borderRadius: "3px", fontSize: "14px", letterSpacing: "3px", cursor: "pointer", fontFamily: "inherit", fontWeight: 800, transition: "all 0.2s", textTransform: "uppercase", boxShadow: active ? `0 0 14px ${C.red}55` : `0 0 14px ${C.cyan}77` }}>{active ? "DETENER" : "ACTIVAR MICROFONO"}</button>
           </div>
         )}
         {(mode === "scales" || mode === "intervals") && <div style={{ padding: "0 0 12px" }} />}
