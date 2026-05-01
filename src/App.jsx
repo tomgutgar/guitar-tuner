@@ -161,12 +161,12 @@ function Fretboard({ rootIndex, scaleIntervals }) {
               const noteIdx = (s.noteIndex + fret) % 12;
               const inScale = scaleSet.has(noteIdx);
               const isRoot = inScale && noteIdx === rootIndex;
-              const bg = isRoot ? C.magenta : inScale ? `${C.cyan}26` : C.bgDeep;
-              const color = isRoot ? C.bg : inScale ? C.cyan : C.textDim;
+              const bg = isRoot ? C.magenta : inScale ? `${C.cyan}55` : C.bgDeep;
+              const color = isRoot ? C.bg : inScale ? C.bg : C.textDim;
               const border = isRoot ? C.magenta : inScale ? C.cyan : C.border;
               return (
                 <div key={`c${si}-${fret}`} style={{ position: "relative", textAlign: "center", padding: "8px 2px", background: bg, border: `1px solid ${border}`, borderRadius: "3px", color, fontSize: "12px", fontWeight: 700, boxShadow: isRoot ? `0 0 10px ${C.magenta}88` : inScale ? `0 0 6px ${C.cyan}44` : "none" }}>
-                  {inScale ? NOTES[noteIdx] : (FRET_MARKERS.includes(fret) && si === 2 ? <span style={{ color: C.violet, opacity: 0.5 }}>•</span> : "")}
+                  {isRoot ? NOTES[noteIdx] : inScale ? <span style={{ fontSize: "10px", opacity: 0.7 }}>●</span> : (FRET_MARKERS.includes(fret) && si === 2 ? <span style={{ color: C.violet, opacity: 0.5 }}>•</span> : "")}
                 </div>
               );
             })}
