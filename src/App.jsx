@@ -45,7 +45,6 @@ const SCALES = {
   "Locrio": [0, 1, 3, 5, 6, 8, 10],
 };
 
-// Cuerdas de arriba (1ª, aguda) a abajo (6ª, grave) — orden visual estándar de tab
 const FRETBOARD_STRINGS = [
   { label: "E4", noteIndex: 4 },
   { label: "B3", noteIndex: 11 },
@@ -67,24 +66,67 @@ const INTERVAL_QUALITY = [
   "Tenso", "Estable", "Sombrío", "Brillante", "Suave", "Tenso", "Perfecto",
 ];
 
-const C = {
-  bg: "#1a1542",
-  bgDeep: "#100c30",
-  panel: "#2a2470",
-  panel2: "#332a85",
-  border: "#5448c4",
-  borderBright: "#8c7eff",
-  text: "#ffffff",
-  textMid: "#d6dcff",
-  textDim: "#a9b1f0",
-  cyan: "#5cf5ff",
-  magenta: "#ff66c4",
-  green: "#5cffa6",
-  yellow: "#fff066",
-  red: "#ff7a93",
-  violet: "#c098ff",
+// ─── NULLTONE design system — 3 paletas ───────────────────────────────────────
+const PALETTES = {
+  A: {
+    name: "NEON VIOLET",
+    bg0: "#0B0420", bg1: "#150A2E", bg2: "#1F1242",
+    line: "#3B2A66", lineDim: "#251847",
+    text: "#E8E1FF", textDim: "#9C8FD9",
+    accent: "#7BF3FF", accent2: "#FF4FB8", accent3: "#B47BFF",
+  },
+  B: {
+    name: "CRT AMBER",
+    bg0: "#08070D", bg1: "#10101F", bg2: "#181A2E",
+    line: "#2C3556", lineDim: "#1B2140",
+    text: "#F2E9D8", textDim: "#A89B7A",
+    accent: "#FFB347", accent2: "#FF6B4A", accent3: "#5BE0FF",
+  },
+  C: {
+    name: "TOXIC LIME",
+    bg0: "#04080A", bg1: "#0A1014", bg2: "#0F1A1E",
+    line: "#1F3A3F", lineDim: "#152528",
+    text: "#D8FFE8", textDim: "#5DA08A",
+    accent: "#9DFF4A", accent2: "#FF3D7F", accent3: "#4AE0C5",
+  },
 };
 
+// Mutable — reassigned from the active palette before every render in GuitarTuner.
+// Sub-components read this at render time (sync) and rAF loops read it at frame time (latest value).
+let C = {
+  bg: "#150A2E", bgDeep: "#0B0420", panel: "#150A2E", panel2: "#1F1242",
+  border: "#3B2A66", borderBright: "#B47BFF",
+  text: "#E8E1FF", textMid: "#E8E1FF", textDim: "#9C8FD9",
+  cyan: "#7BF3FF", magenta: "#FF4FB8",
+  green: "#B47BFF", yellow: "#7BF3FF", red: "#FF4FB8", violet: "#B47BFF",
+};
+
+// ─── Logo NULLTONE — versión 1 en color ───────────────────────────────────────
+function LogoNulltone({ accent, accent2, size = 1 }) {
+  const w = 120 * size, h = 48 * size;
+  return (
+    <svg width={w} height={h} viewBox="0 0 120 48" style={{ filter: `drop-shadow(0 0 6px ${accent}88)`, display: "block" }}>
+      <defs>
+        <linearGradient id="nt-g" x1="0" x2="1">
+          <stop offset="0" stopColor={accent} />
+          <stop offset="1" stopColor={accent2} />
+        </linearGradient>
+      </defs>
+      {/* diapasón: dos polos verticales */}
+      <rect x="14" y="6" width="3" height="36" fill={accent} />
+      <rect x="34" y="6" width="3" height="36" fill={accent} />
+      {/* tallo */}
+      <rect x="22" y="32" width="7" height="14" fill={accent} opacity="0.5" />
+      {/* onda entre los polos */}
+      <path d="M5 24 Q 13 14, 25 24 T 46 24" fill="none" stroke="url(#nt-g)" strokeWidth="2.4" strokeLinecap="square" />
+      {/* wordmark */}
+      <text x="56" y="22" fontFamily='"Orbitron", monospace' fontWeight="800" fontSize="14" fill={C.text} letterSpacing="2">NULL</text>
+      <text x="56" y="38" fontFamily='"Orbitron", monospace' fontWeight="800" fontSize="14" fill={accent2} letterSpacing="2">TONE</text>
+    </svg>
+  );
+}
+
+// ─── DSP ──────────────────────────────────────────────────────────────────────
 function freqToNote(freq) {
   if (freq <= 0) return null;
   const A4 = 440;
@@ -100,7 +142,7 @@ function detectPitch(buffer, sampleRate) {
   let energy = 0;
   for (let i = 0; i < SIZE; i++) energy += buffer[i] * buffer[i];
   const rms = Math.sqrt(energy / SIZE);
-  if (rms < 0.002) return -1;  // ~-54 dB noise gate
+  if (rms < 0.002) return -1;
 
   const minLag = Math.floor(sampleRate / 1400);
   const maxLag = Math.min(Math.floor(sampleRate / 60), SIZE - 1);
@@ -123,7 +165,6 @@ function detectPitch(buffer, sampleRate) {
   const energyAvg = energy / SIZE;
   if (bestLag < 0 || bestVal < energyAvg * 0.3) return -1;
 
-  // Corrección de octava: si el lag mitad (o tercio) es casi igual de fuerte, es la frecuencia real
   for (const div of [2, 3]) {
     const candidate = Math.round(bestLag / div);
     if (candidate >= minLag && r[candidate] > bestVal * 0.9) {
@@ -143,7 +184,7 @@ function detectPitch(buffer, sampleRate) {
   return sampleRate / refinedLag;
 }
 
-
+// ─── Sub-componentes ───────────────────────────────────────────────────────────
 function Fretboard({ rootIndex, scaleIntervals }) {
   const scaleSet = new Set(scaleIntervals.map((i) => (i + rootIndex) % 12));
   return (
@@ -204,22 +245,16 @@ function IntervalView({ noteA, noteB, setNoteA, setNoteB }) {
       {renderRow(noteB, setNoteB, "Nota B")}
       <div style={{ textAlign: "center", padding: "20px 0 12px" }}>
         <div style={{ color: C.textDim, fontSize: "11px", letterSpacing: "2px", textTransform: "uppercase", fontWeight: 600, marginBottom: "8px" }}>Intervalo</div>
-        <div style={{ fontSize: "44px", fontWeight: 800, color: C.cyan, lineHeight: 1.1, letterSpacing: "-1px", textShadow: `0 0 30px ${C.cyan}77` }}>{name}</div>
+        <div style={{ fontSize: "44px", fontWeight: 400, color: C.cyan, lineHeight: 1.1, letterSpacing: "-1px", textShadow: `0 0 30px ${C.cyan}77`, fontFamily: '"Major Mono Display", monospace' }}>{name}</div>
         <div style={{ color: C.violet, fontSize: "14px", letterSpacing: "2px", marginTop: "8px", fontWeight: 700, textTransform: "uppercase" }}>{quality}</div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", marginTop: "12px" }}>
-        <div style={{ padding: "10px", background: C.bgDeep, border: `1px solid ${C.border}`, borderRadius: "3px", textAlign: "center" }}>
-          <div style={{ color: C.textDim, fontSize: "10px", letterSpacing: "2px", fontWeight: 600 }}>SEMITONOS</div>
-          <div style={{ color: C.text, fontSize: "20px", fontWeight: 700, marginTop: "4px" }}>{semis}</div>
-        </div>
-        <div style={{ padding: "10px", background: C.bgDeep, border: `1px solid ${C.border}`, borderRadius: "3px", textAlign: "center" }}>
-          <div style={{ color: C.textDim, fontSize: "10px", letterSpacing: "2px", fontWeight: 600 }}>CENTS</div>
-          <div style={{ color: C.text, fontSize: "20px", fontWeight: 700, marginTop: "4px" }}>{cents}</div>
-        </div>
-        <div style={{ padding: "10px", background: C.bgDeep, border: `1px solid ${C.border}`, borderRadius: "3px", textAlign: "center" }}>
-          <div style={{ color: C.textDim, fontSize: "10px", letterSpacing: "2px", fontWeight: 600 }}>RATIO</div>
-          <div style={{ color: C.text, fontSize: "20px", fontWeight: 700, marginTop: "4px" }}>{ratio.toFixed(3)}</div>
-        </div>
+        {[["SEMITONOS", semis], ["CENTS", cents], ["RATIO", ratio.toFixed(3)]].map(([lab, val]) => (
+          <div key={lab} style={{ padding: "10px", background: C.bgDeep, border: `1px solid ${C.border}`, borderRadius: "3px", textAlign: "center" }}>
+            <div style={{ color: C.textDim, fontSize: "10px", letterSpacing: "2px", fontWeight: 600 }}>{lab}</div>
+            <div style={{ color: C.text, fontSize: "20px", fontWeight: 700, marginTop: "4px" }}>{val}</div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -249,8 +284,9 @@ function Waveform({ analyser, active }) {
       animRef.current = requestAnimationFrame(draw);
       analyser.getFloatTimeDomainData(dataArray);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // scanlines — reads C.violet at frame time (always latest)
       for (let y = 0; y < canvas.height; y += 3) {
-        ctx.fillStyle = "rgba(192,152,255,0.08)";
+        ctx.fillStyle = C.violet + "14";
         ctx.fillRect(0, y, canvas.width, 1);
       }
       ctx.lineWidth = 1.8; ctx.strokeStyle = C.cyan;
@@ -272,7 +308,9 @@ function Waveform({ analyser, active }) {
   return (<canvas ref={canvasRef} width={600} height={80} style={{ width: "100%", height: "80px", display: "block" }} />);
 }
 
+// ─── App principal ─────────────────────────────────────────────────────────────
 export default function GuitarTuner() {
+  const [theme, setTheme] = useState("A");
   const [active, setActive] = useState(false);
   const [freq, setFreq] = useState(null);
   const [noteData, setNoteData] = useState(null);
@@ -285,6 +323,33 @@ export default function GuitarTuner() {
   const [chordType, setChordType] = useState("Mayor");
   const [intervalA, setIntervalA] = useState(0);
   const [intervalB, setIntervalB] = useState(7);
+
+  // Actualiza C con la paleta activa antes de renderizar
+  const p = PALETTES[theme];
+  C = {
+    bg: p.bg1,
+    bgDeep: p.bg0,
+    panel: p.bg1,
+    panel2: p.bg2,
+    border: p.line,
+    borderBright: p.accent3,
+    text: p.text,
+    textMid: p.text,
+    textDim: p.textDim,
+    cyan: p.accent,
+    magenta: p.accent2,
+    green: p.accent3,
+    yellow: p.accent,
+    red: p.accent2,
+    violet: p.accent3,
+  };
+
+  // Sincroniza el fondo del body con el tema activo
+  useEffect(() => {
+    let s = document.getElementById("nt-theme");
+    if (!s) { s = document.createElement("style"); s.id = "nt-theme"; document.head.appendChild(s); }
+    s.textContent = `body { background: ${p.bg0} !important; }`;
+  }, [theme, p.bg0]);
 
   const audioCtxRef = useRef(null);
   const analyserRef = useRef(null);
@@ -340,11 +405,11 @@ export default function GuitarTuner() {
   useEffect(() => {
     if (!active || !analyserRef.current) return;
     const analyser = analyserRef.current;
-    const buffer = new Float32Array(analyser.fftSize);  // 4096 always read
+    const buffer = new Float32Array(analyser.fftSize);
     let lastDetectMs = 0;
     let lastUpdateMs = 0;
     const HOLD_MS = 800;
-    const UPDATE_MS = 33;          // ~30 fps display
+    const UPDATE_MS = 33;
     const EMA_ALPHA = 0.2;
     const STABILITY_CENTS = 4;
     const STABILITY_FRAMES = 3;
@@ -354,7 +419,6 @@ export default function GuitarTuner() {
 
     function tick() {
       analyser.getFloatTimeDomainData(buffer);
-      // Adaptive window: high strings (>180 Hz) need less data → faster, less latency
       const analysisBuffer = smoothedFreq != null && smoothedFreq > 180
         ? buffer.subarray(0, 2048)
         : buffer;
@@ -363,8 +427,6 @@ export default function GuitarTuner() {
 
       if (rawFreq > 60 && rawFreq < 1400) {
         lastDetectMs = now;
-
-        // EMA: snap fast on note jumps (>50 cents), glide smoothly on fine tuning
         const centsDiff = smoothedFreq != null
           ? Math.abs(1200 * Math.log2(rawFreq / smoothedFreq))
           : Infinity;
@@ -372,15 +434,12 @@ export default function GuitarTuner() {
         smoothedFreq = smoothedFreq == null
           ? rawFreq
           : smoothedFreq + alpha * (rawFreq - smoothedFreq);
-
-        // Hysteresis: only advance stable counter when raw is within threshold of smooth
         const postDiff = Math.abs(1200 * Math.log2(rawFreq / smoothedFreq));
         if (postDiff < STABILITY_CENTS) {
           stableCount = Math.min(stableCount + 1, STABILITY_FRAMES + 1);
         } else {
           stableCount = 0;
         }
-
         if (stableCount >= STABILITY_FRAMES && now - lastUpdateMs >= UPDATE_MS) {
           lastUpdateMs = now;
           setFreq(Math.round(smoothedFreq * 10) / 10);
@@ -391,7 +450,6 @@ export default function GuitarTuner() {
           );
           setClosestString(closest);
         }
-
       } else if (now - lastDetectMs > HOLD_MS) {
         smoothedFreq = null;
         stableCount = 0;
@@ -414,18 +472,58 @@ export default function GuitarTuner() {
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "20px", boxSizing: "border-box" }}>
+      {/* scanlines overlay */}
       <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 10, backgroundImage: "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.18) 2px, rgba(0,0,0,0.18) 3px)" }} />
-      <div style={{ width: "100%", maxWidth: "560px", background: `linear-gradient(160deg, ${C.panel} 0%, ${C.bgDeep} 100%)`, border: `1px solid ${C.border}`, borderRadius: "6px", boxShadow: `0 0 60px rgba(92,245,255,0.1), 0 0 1px ${C.borderBright}, inset 0 1px 0 rgba(192,152,255,0.12)`, overflow: "hidden", position: "relative", zIndex: 1 }}>
-        <div style={{ padding: "18px 24px 14px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
-            <div style={{ color: C.magenta, fontSize: "13px", letterSpacing: "4px", marginBottom: "5px", fontWeight: 700 }}>CHROMATIC</div>
-            <div style={{ color: C.text, fontSize: "24px", letterSpacing: "2px", fontWeight: 700 }}>TUNER <span style={{ color: C.cyan }}>/</span> DETECTOR</div>
-          </div>
-          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-            <div style={{ width: "9px", height: "9px", borderRadius: "50%", background: active ? C.green : C.border, boxShadow: active ? `0 0 14px ${C.green}` : "none", transition: "all 0.3s" }} />
-            <span style={{ color: active ? C.green : C.textDim, fontSize: "13px", letterSpacing: "2px", fontWeight: 700 }}>{active ? "LIVE" : "STANDBY"}</span>
+
+      <div style={{ width: "100%", maxWidth: "560px", background: `linear-gradient(160deg, ${C.panel2} 0%, ${C.bgDeep} 100%)`, border: `1px solid ${C.border}`, borderRadius: "6px", boxShadow: `0 0 60px ${C.cyan}18, 0 0 1px ${C.borderBright}, inset 0 1px 0 ${C.cyan}12`, overflow: "hidden", position: "relative", zIndex: 1 }}>
+
+        {/* ── Header ── */}
+        <div style={{ padding: "14px 24px 12px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <LogoNulltone accent={p.accent} accent2={p.accent2} size={0.85} />
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
+            {/* estado */}
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <div style={{ width: "9px", height: "9px", borderRadius: "50%", background: active ? C.green : C.border, boxShadow: active ? `0 0 14px ${C.green}` : "none", transition: "all 0.3s" }} />
+              <span style={{ color: active ? C.green : C.textDim, fontSize: "13px", letterSpacing: "2px", fontWeight: 700 }}>{active ? "LIVE" : "STANDBY"}</span>
+            </div>
+            {/* selector de tema */}
+            <div style={{ display: "flex", gap: "4px" }}>
+              {(["A", "B", "C"]).map((t) => {
+                const tp = PALETTES[t];
+                const sel = theme === t;
+                return (
+                  <button
+                    key={t}
+                    onClick={() => setTheme(t)}
+                    title={tp.name}
+                    style={{
+                      padding: "3px 9px",
+                      background: sel ? tp.accent + "22" : "transparent",
+                      border: `1px solid ${sel ? tp.accent : C.border}`,
+                      borderRadius: "3px",
+                      cursor: "pointer",
+                      fontFamily: '"JetBrains Mono", monospace',
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      letterSpacing: "1px",
+                      color: sel ? tp.accent : C.textDim,
+                      boxShadow: sel ? `0 0 8px ${tp.accent}66` : "none",
+                      transition: "all 0.15s",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                    }}
+                  >
+                    <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: tp.accent, display: "inline-block", boxShadow: sel ? `0 0 6px ${tp.accent}` : "none" }} />
+                    {t}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
+
+        {/* ── Tabs ── */}
         <div style={{ padding: "14px 24px 0", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "6px" }}>
           {[
             ["tuner", "AFINADOR"],
@@ -435,10 +533,12 @@ export default function GuitarTuner() {
           ].map(([m, label]) => {
             const sel = mode === m;
             return (
-              <button key={m} onClick={() => setMode(m)} style={{ padding: "9px 6px", background: sel ? C.cyan : "transparent", color: sel ? C.bg : C.textMid, border: `1px solid ${sel ? C.cyan : C.border}`, borderRadius: "3px", fontSize: "12px", letterSpacing: "1px", cursor: "pointer", fontFamily: "inherit", textTransform: "uppercase", fontWeight: 700, transition: "all 0.2s", boxShadow: sel ? `0 0 12px ${C.cyan}66` : "none" }}>{label}</button>
+              <button key={m} onClick={() => setMode(m)} style={{ padding: "9px 6px", background: sel ? C.cyan : "transparent", color: sel ? C.bgDeep : C.textMid, border: `1px solid ${sel ? C.cyan : C.border}`, borderRadius: "3px", fontSize: "12px", letterSpacing: "1px", cursor: "pointer", fontFamily: "inherit", textTransform: "uppercase", fontWeight: 700, transition: "all 0.2s", boxShadow: sel ? `0 0 12px ${C.cyan}66` : "none" }}>{label}</button>
             );
           })}
         </div>
+
+        {/* ── Modo afinador ── */}
         {mode === "tuner" && (
           <div style={{ padding: "16px 24px 8px" }}>
             <div style={{ background: C.bgDeep, border: `1px solid ${C.border}`, borderRadius: "3px", padding: "8px", position: "relative", overflow: "hidden" }}>
@@ -450,7 +550,9 @@ export default function GuitarTuner() {
         {mode === "tuner" && (
           <div style={{ padding: "16px 24px" }}>
             <div style={{ textAlign: "center", padding: "24px 0 16px", position: "relative" }}>
-              <div style={{ fontSize: "128px", fontWeight: 800, color: noteData ? centsColor : C.textDim, lineHeight: 1, letterSpacing: "-5px", transition: "color 0.15s", fontFamily: "inherit", textShadow: noteData ? `0 0 50px ${centsColor}88, 0 0 20px ${centsColor}55` : "none" }}>{noteData ? noteData.note : "--"}</div>
+              <div style={{ fontSize: "128px", fontWeight: 400, color: noteData ? centsColor : C.textDim, lineHeight: 1, letterSpacing: "-5px", transition: "color 0.15s", fontFamily: '"Major Mono Display", monospace', textShadow: noteData ? `0 0 50px ${centsColor}88, 0 0 20px ${centsColor}55` : "none" }}>
+                {noteData ? noteData.note : "--"}
+              </div>
               {noteData && (<div style={{ color: C.textMid, fontSize: "20px", marginTop: "8px", fontWeight: 600 }}>OCT {noteData.octave}</div>)}
             </div>
             <div style={{ marginBottom: "20px" }}>
@@ -485,6 +587,8 @@ export default function GuitarTuner() {
             </div>
           </div>
         )}
+
+        {/* ── Modo acordes ── */}
         {mode === "chord" && (
           <div style={{ padding: "16px 24px" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: "10px", marginBottom: "14px" }}>
@@ -494,7 +598,7 @@ export default function GuitarTuner() {
                   {NOTES.map((n, i) => {
                     const sel = i === chordRoot;
                     return (
-                      <button key={n} onClick={() => setChordRoot(i)} style={{ padding: "8px 2px", background: sel ? C.magenta : C.bgDeep, border: `1px solid ${sel ? C.magenta : C.border}`, borderRadius: "3px", color: sel ? C.bg : C.textMid, fontSize: n.includes("#") ? "11px" : "12px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: sel ? `0 0 10px ${C.magenta}88` : "none" }}>{n}</button>
+                      <button key={n} onClick={() => setChordRoot(i)} style={{ padding: "8px 2px", background: sel ? C.magenta : C.bgDeep, border: `1px solid ${sel ? C.magenta : C.border}`, borderRadius: "3px", color: sel ? C.bgDeep : C.textMid, fontSize: n.includes("#") ? "11px" : "12px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: sel ? `0 0 10px ${C.magenta}88` : "none" }}>{n}</button>
                     );
                   })}
                 </div>
@@ -518,6 +622,8 @@ export default function GuitarTuner() {
             </div>
           </div>
         )}
+
+        {/* ── Modo escalas ── */}
         {mode === "scales" && (
           <div style={{ padding: "16px 24px" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: "10px", marginBottom: "14px" }}>
@@ -527,7 +633,7 @@ export default function GuitarTuner() {
                   {NOTES.map((n, i) => {
                     const sel = i === scaleRoot;
                     return (
-                      <button key={n} onClick={() => setScaleRoot(i)} style={{ padding: "8px 2px", background: sel ? C.magenta : C.bgDeep, border: `1px solid ${sel ? C.magenta : C.border}`, borderRadius: "3px", color: sel ? C.bg : C.textMid, fontSize: n.includes("#") ? "11px" : "12px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: sel ? `0 0 10px ${C.magenta}88` : "none" }}>{n}</button>
+                      <button key={n} onClick={() => setScaleRoot(i)} style={{ padding: "8px 2px", background: sel ? C.magenta : C.bgDeep, border: `1px solid ${sel ? C.magenta : C.border}`, borderRadius: "3px", color: sel ? C.bgDeep : C.textMid, fontSize: n.includes("#") ? "11px" : "12px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", boxShadow: sel ? `0 0 10px ${C.magenta}88` : "none" }}>{n}</button>
                     );
                   })}
                 </div>
@@ -551,18 +657,27 @@ export default function GuitarTuner() {
             </div>
           </div>
         )}
+
+        {/* ── Modo intervalos ── */}
         {mode === "intervals" && (
           <div style={{ padding: "16px 24px" }}>
             <IntervalView noteA={intervalA} noteB={intervalB} setNoteA={setIntervalA} setNoteB={setIntervalB} />
           </div>
         )}
+
+        {/* ── Botón activar ── */}
         {mode === "tuner" && (
           <div style={{ padding: "0 24px 20px" }}>
-            <button onClick={active ? stopAudio : startAudio} style={{ width: "100%", padding: "16px", background: active ? "transparent" : C.cyan, color: active ? C.red : C.bg, border: `1px solid ${active ? C.red : C.cyan}`, borderRadius: "3px", fontSize: "14px", letterSpacing: "3px", cursor: "pointer", fontFamily: "inherit", fontWeight: 800, transition: "all 0.2s", textTransform: "uppercase", boxShadow: active ? `0 0 14px ${C.red}55` : `0 0 14px ${C.cyan}77` }}>{active ? "DETENER" : "ACTIVAR MICROFONO"}</button>
+            <button onClick={active ? stopAudio : startAudio} style={{ width: "100%", padding: "16px", background: active ? "transparent" : C.cyan, color: active ? C.red : C.bgDeep, border: `1px solid ${active ? C.red : C.cyan}`, borderRadius: "3px", fontSize: "14px", letterSpacing: "3px", cursor: "pointer", fontFamily: "inherit", fontWeight: 800, transition: "all 0.2s", textTransform: "uppercase", boxShadow: active ? `0 0 14px ${C.red}55` : `0 0 14px ${C.cyan}77` }}>{active ? "DETENER" : "ACTIVAR MICROFONO"}</button>
           </div>
         )}
         {(mode === "scales" || mode === "intervals") && <div style={{ padding: "0 0 12px" }} />}
-        {error && (<div style={{ margin: "0 24px 20px", padding: "12px 16px", background: `${C.red}10`, border: `1px solid ${C.red}`, borderRadius: "3px", color: C.red, fontSize: "13px", letterSpacing: "1px", fontWeight: 600 }}>{error}</div>)}
+
+        {error && (
+          <div style={{ margin: "0 24px 20px", padding: "12px 16px", background: `${C.red}10`, border: `1px solid ${C.red}`, borderRadius: "3px", color: C.red, fontSize: "13px", letterSpacing: "1px", fontWeight: 600 }}>{error}</div>
+        )}
+
+        {/* ── Footer ── */}
         <div style={{ borderTop: `1px solid ${C.border}`, padding: "12px 24px", display: "flex", justifyContent: "space-between", fontSize: "11px", color: C.textDim, letterSpacing: "2px", fontWeight: 600 }}>
           <span>WEB AUDIO API</span>
           <span style={{ color: C.violet }}>YIN + EMA SMOOTH</span>

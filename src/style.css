@@ -18,6 +18,7 @@
   --violet: #c098ff;
 
   --mono: 'JetBrains Mono', 'Geist Mono', 'SF Mono', 'Courier New', monospace;
+  --display: 'Major Mono Display', monospace;
 
   color-scheme: dark;
   font-family: var(--mono);
